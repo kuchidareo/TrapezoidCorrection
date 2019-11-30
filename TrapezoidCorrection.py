@@ -6,7 +6,6 @@ from tkinter import ttk
 from tkinter import filedialog
 from tkinter import messagebox
 import threading
-import re
 import pathlib
 import itertools
 
@@ -18,21 +17,6 @@ def analyze():
     q.set("Converting...")
     i=0
     for original_path in original_paths:
-        original_img= cv2.imread(original_path,1)
-        original_img = original_img / 255
-        imgBox = original_img[L[0]: L[1],L[2]: L[3]]
-        b = imgBox[:,:,0].flatten().mean()
-        g = imgBox[:,:,1].flatten().mean()
-        r = imgBox[:,:,2].flatten().mean()
-        original_img[:, :, 0] = 100 / 255 * (original_img[:, :, 0] / b)
-        original_img[:, :, 1] = 100 / 255 * (original_img[:, :, 1] / g)
-        original_img[:, :, 2] = 170 / 255 * (original_img[:, :, 2] / r)
-        original_img[original_img > 1] = 1
-        z = original_img / base_img
-        z[z>1] = 1
-        z = z * 255
-
-        #path設定
         original_path=original_path.replace(os.sep,"/")
         previous_path=original_path[:original_path.rfind("/")]
         previous_path=previous_path[:previous_path.rfind("/")]
@@ -41,19 +25,56 @@ def analyze():
         if not os.path.exists(previous_path+"/homography"):
             os.mkdir(previous_path+"/homography")
 
-        
-        dst = []
+        original_img = cv2.imread(original_path)     
+        size = original_img.shape[0] * original_img.shape[1]
+        aimg = original_img
+        aimg[aimg[:,:,0]>200]= 0
+        cv2.imwrite(previous_path+"/homography/"+image_name+"_aimg.jpg", aimg)
+        img = cv2.cvtColor(aimg, cv2.COLOR_BGR2HLS)
+        img[img[:,:,0]<20]= 0
+        img[80<img[:,:,0]]= 0
+        img[200<img[:,:,2]]= 0
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        cv2.imwrite(previous_path+"/homography/"+image_name+"_gray.jpg", gray)
 
-        '''pts1 = np.float32([[1227,999],[367,1802],[3932,1810],[3056,999]])
-        pts2 = np.float32([[595,431],[582,1458],[1632,1450],[1635,436]])
-        M = cv2.getPerspectiveTransform(pts1,pts2)'''
-        dst = cv2.warpPerspective(z,M,(N[0],N[1]))
-        dst = dst.transpose(1,0,2)
-        dst = dst[::-1]
-        cv2.imwrite(previous_path+"/homography/"+image_name+"_homography.jpg", dst)
+        contours, hierarchy = cv2.findContours(gray, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+        max_area = 10000000
+        approxs = []
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area >= size * 0.005:
+                print(area)
+                print("wawawawawawawaa--------")
+            epsilon = 0.1 * cv2.arcLength(cnt, True)
+            tmp = cv2.approxPolyDP(cnt, epsilon, True)
+            if 4 == len(tmp):
+                approxs.append(tmp)
+                if size * 0.005 <= area\
+                    and area <= size * 0.99\
+                    and max_area > area:
+                    best_approx = tmp
+                    max_area = area
+        r_btm = best_approx[0][0]
+        r_top = best_approx[1][0]
+        l_top = best_approx[2][0]
+        l_btm = best_approx[3][0]
+        top_line   = (abs(r_top[0] - l_top[0]) ^ 2) + (abs(r_top[1] - l_top[1]) ^ 2)
+        btm_line   = (abs(r_btm[0] - l_btm[0]) ^ 2) + (abs(r_btm[1] - l_btm[1]) ^ 2)
+        left_line  = (abs(l_top[0] - l_btm[0]) ^ 2) + (abs(l_top[1] - l_btm[1]) ^ 2)
+        right_line = (abs(r_top[0] - r_btm[0]) ^ 2) + (abs(r_top[1] - r_btm[1]) ^ 2)
+        max_x = top_line  if top_line  > btm_line   else btm_line
+        max_y = left_line if left_line > right_line else right_line
+
+        pts1 = np.float32(best_approx)
+        pts2 = np.float32([[max_x, max_y], [max_x, 0], [0, 0], [0, max_y]])
+
+        M = cv2.getPerspectiveTransform(pts1, pts2)
+        dst = cv2.warpPerspective(original_img, M, (max_x, max_y))  
+        #path設定
+        cv2.imwrite(previous_path+"/homography/"+image_name+"_corrected.jpg", dst)
         i+=1
         q.set(str(i)+"/"+str(len(original_paths)))
-        del original_img,dst,z,imgBox
+        del original_img,dst,img,gray,M,area
     finished()
 
 def callback():
@@ -73,35 +94,10 @@ def sansyou1_clicked():
     file1.set(filepath1)
 
 
-def sansyou2_clicked():
-    fTyp = [("","*.jpg")]
-    iDir = os.getenv("HOMEDRIVE") + os.getenv("HOMEPATH") + "\\Desktop"
-    global filepath2
-    global base_img
-    filepath2 = filedialog.askopenfilename(filetypes = fTyp,initialdir = iDir)
-    base_img=cv2.imread(filepath2,1)
-    base_img = base_img / 255
-    file2.set(filepath2)
-
-def sansyou3_clicked():
-    fTyp = [("","*.csv")]
-    iDir = os.getenv("HOMEDRIVE") + os.getenv("HOMEPATH") + "\\Desktop"
-    global filepath3
-    global M
-    global N
-    global L
-    filepath3 = filedialog.askopenfilename(filetypes = fTyp,initialdir = iDir)
-    file3.set(filepath3)
-    M = np.genfromtxt(fname=filepath3,delimiter=",",dtype = None)
-    M = list(itertools.chain.from_iterable(M))
-    print(M)
-    N = [int(M[9]),int(M[10])]
-    L = [int(M[11]),int(M[12]),int(M[13]),int(M[14])]
-    M = np.array([[M[0],M[1],M[2]], [M[3],M[4],M[5]], [M[6],M[7],M[8]]])
 if __name__ == '__main__':
     # rootの作成
     root = Tk()
-    root.title('Image Analysis')
+    root.title('TrapezoidCorrection')
     root.resizable(False, False)
 
     # Frame1
@@ -119,29 +115,6 @@ if __name__ == '__main__':
     button1 = ttk.Button(frame1, text=u'OPEN', command=sansyou1_clicked)
     button1.grid(row=0, column=2)
 
-    s2 = StringVar()
-    s2.set('Gray Board FILE')
-    label2 = ttk.Label(frame1, textvariable=s2)
-    label2.grid(row=1, column=0,sticky=W)
-
-    file2 = StringVar()
-    file2_entry = ttk.Entry(frame1, textvariable=file2, width=50)
-    file2_entry.grid(row=1, column=1)
-
-    button2 = ttk.Button(frame1, text=u'OPEN', command=sansyou2_clicked)
-    button2.grid(row=1, column=2)
-
-    s3 = StringVar()
-    s3.set('Conversion Matrix FILE')
-    label3 = ttk.Label(frame1, textvariable=s3)
-    label3.grid(row=2, column=0,sticky=W)
-
-    file3 = StringVar()
-    file3_entry = ttk.Entry(frame1, textvariable=file3, width=50)
-    file3_entry.grid(row=2, column=1)
-
-    button3 = ttk.Button(frame1, text=u'OPEN', command=sansyou3_clicked)
-    button3.grid(row=2, column=2)
 
     # Frame3 startボタン
     frame3 = ttk.Frame(root, padding=(0,0,0,10))
