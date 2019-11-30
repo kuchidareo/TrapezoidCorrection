@@ -85,7 +85,7 @@ def analyze():
         max_x = btm_line  if btm_line  > top_line   else top_line
         max_y = right_line if right_line > left_line else left_line
 
-        pts1 = np.float32([[l_top[0],l_top[1]],[l_btm[0],l_btm[1]],[r_btm[0],r_btm[1]],[r_top[0],r_top[1]]])
+        pts1 = np.float32([[l_top[0]-200,l_top[1]-200],[l_btm[0]-200,l_btm[1]+200],[r_btm[0]+200,r_btm[1]+200],[r_top[0]+200,r_top[1]-200]])
         pts2 = np.float32([[0,0], [0, max_y], [max_x, max_y], [max_x,0]])
 
         M = cv2.getPerspectiveTransform(pts1, pts2)
