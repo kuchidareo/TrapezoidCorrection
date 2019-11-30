@@ -27,24 +27,19 @@ def analyze():
 
         original_img = cv2.imread(original_path)     
         size = original_img.shape[0] * original_img.shape[1]
-        aimg = original_img
+        aimg = cv2.imread(original_path)     
         aimg[aimg[:,:,0]>200]= 0
-        cv2.imwrite(previous_path+"/homography/"+image_name+"_aimg.jpg", aimg)
+        aimg[aimg[:,:,2]*0.8 < aimg[:,:,0]]= 0
         img = cv2.cvtColor(aimg, cv2.COLOR_BGR2HLS)
         img[img[:,:,0]<20]= 0
         img[80<img[:,:,0]]= 0
-        img[200<img[:,:,2]]= 0
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        cv2.imwrite(previous_path+"/homography/"+image_name+"_gray.jpg", gray)
 
         contours, hierarchy = cv2.findContours(gray, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
         max_area = 10000000
         approxs = []
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            if area >= size * 0.005:
-                print(area)
-                print("wawawawawawawaa--------")
             epsilon = 0.1 * cv2.arcLength(cnt, True)
             tmp = cv2.approxPolyDP(cnt, epsilon, True)
             if 4 == len(tmp):
@@ -54,27 +49,53 @@ def analyze():
                     and max_area > area:
                     best_approx = tmp
                     max_area = area
-        r_btm = best_approx[0][0]
-        r_top = best_approx[1][0]
-        l_top = best_approx[2][0]
-        l_btm = best_approx[3][0]
-        top_line   = (abs(r_top[0] - l_top[0]) ^ 2) + (abs(r_top[1] - l_top[1]) ^ 2)
-        btm_line   = (abs(r_btm[0] - l_btm[0]) ^ 2) + (abs(r_btm[1] - l_btm[1]) ^ 2)
-        left_line  = (abs(l_top[0] - l_btm[0]) ^ 2) + (abs(l_top[1] - l_btm[1]) ^ 2)
-        right_line = (abs(r_top[0] - r_btm[0]) ^ 2) + (abs(r_top[1] - r_btm[1]) ^ 2)
-        max_x = top_line  if top_line  > btm_line   else btm_line
-        max_y = left_line if left_line > right_line else right_line
+        l_top = best_approx[0][0] 
+        l_btm = best_approx[1][0]
+        r_btm = best_approx[2][0]
+        r_top = best_approx[3][0]
+        l_top_total = l_top[0] + l_top[1]
+        l_btm_total = l_btm[0] + l_btm[1]
+        r_btm_total = r_btm[0] + r_btm[1]
+        r_top_total = r_top[0] + r_top[1]
+        if min(l_top_total,l_btm_total,r_btm_total,r_top_total) == l_btm_total:
+            l_top = best_approx[1][0]
+            l_btm = best_approx[0][0]
+        elif min(l_top_total,l_btm_total,r_btm_total,r_top_total) == r_btm_total:
+            l_top = best_approx[2][0]
+            r_btm = best_approx[0][0]
+        elif min(l_top_total,l_btm_total,r_btm_total,r_top_total) == r_top_total:
+            l_top = best_approx[3][0]
+            r_top = best_approx[0][0]
 
-        pts1 = np.float32(best_approx)
-        pts2 = np.float32([[max_x, max_y], [max_x, 0], [0, 0], [0, max_y]])
+        if max(l_top_total,l_btm_total,r_btm_total,r_top_total) == l_btm_total:
+            r_btm = best_approx[1][0]
+            l_btm = best_approx[2][0]
+        elif max(l_top_total,l_btm_total,r_btm_total,r_top_total) == r_top_total:
+            r_btm = best_approx[3][0]
+            r_top = best_approx[2][0]
+        
+        if abs((l_top[0] - l_btm[0]) ^ 2) > abs((l_top[1] - l_btm[1]) ^ 2):
+            l_btm = best_approx[3][0]
+            r_top = best_approx[1][0]
+
+        btm_line   = (abs(l_btm[0] - r_btm[0]) ^ 2) + (abs(l_btm[1] - r_btm[1]) ^ 2)
+        top_line   = (abs(l_top[0] - r_top[0]) ^ 2) + (abs(l_top[1] - r_top[1]) ^ 2)
+        right_line  = (abs(r_btm[0] - r_top[0]) ^ 2) + (abs(r_btm[1] - r_top[1]) ^ 2)
+        left_line = (abs(l_btm[0] - l_top[0]) ^ 2) + (abs(l_btm[1] - l_top[1]) ^ 2)
+        max_x = btm_line  if btm_line  > top_line   else top_line
+        max_y = right_line if right_line > left_line else left_line
+
+        pts1 = np.float32([[l_top[0]-200,l_top[1]-200],[l_btm[0]-200,l_btm[1]+200],[r_btm[0]+200,r_btm[1]+200],[r_top[0]+200,r_top[1]-200]])
+        pts2 = np.float32([[0,0], [0, max_y], [max_x, max_y], [max_x,0]])
 
         M = cv2.getPerspectiveTransform(pts1, pts2)
-        dst = cv2.warpPerspective(original_img, M, (max_x, max_y))  
-        #path設定
+        dst = cv2.warpPerspective(original_img, M, (max_x, max_y))
+        dst = dst.transpose(1,0,2)
+        dst = dst[:,::-1]
         cv2.imwrite(previous_path+"/homography/"+image_name+"_corrected.jpg", dst)
         i+=1
         q.set(str(i)+"/"+str(len(original_paths)))
-        del original_img,dst,img,gray,M,area
+        del original_img,dst,img,gray,M,area,aimg
     finished()
 
 def callback():
