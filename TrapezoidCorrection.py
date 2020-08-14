@@ -92,6 +92,9 @@ def analyze():
         dst = cv2.warpPerspective(original_img, M, (max_x, max_y))
         dst = dst.transpose(1,0,2)
         dst = dst[:,::-1]
+        dst = cv2.rotate(dst, cv2.ROTATE_180)
+        width,height =2150,1720
+        dst = cv2.resize(dst,(width,height))
         cv2.imwrite(previous_path+"/homography/"+image_name+"_corrected.jpg", dst)
         i+=1
         q.set(str(i)+"/"+str(len(original_paths)))

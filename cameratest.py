@@ -25,32 +25,87 @@ def analyze():
         if not os.path.exists(previous_path+"/homography"):
             os.mkdir(previous_path+"/homography")
 
-        original_img = cv2.imread(original_path)     
-        size = original_img.shape[0] * original_img.shape[1]
-        aimg = cv2.imread(original_path)     
-        aimg[aimg[:,:,0]>200]= 0
-        aimg[aimg[:,:,2]*0.8 < aimg[:,:,0]]= 0
-        cv2.imwrite(previous_path+"/homography/"+image_name+"_aimg.jpg", aimg)
-        img = cv2.cvtColor(aimg, cv2.COLOR_BGR2HLS)
-        img[img[:,:,0]<20]= 0
-        img[80<img[:,:,0]]= 0
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        cv2.imwrite(previous_path+"/homography/"+image_name+"_gray.jpg", gray)
+        original_img = cv2.imread(original_path)
+        HLS_img = cv2.cvtColor(original_img, cv2.COLOR_BGR2HLS)
+        H_min = 20
+        H_max = 60
+        L_min = 10
+        L_max = 255
+        S_min = 85
+        S_max = 255
 
-        contours, hierarchy = cv2.findContours(gray, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-        max_area = 10000000
-        approxs = []
-        for cnt in contours:
-            area = cv2.contourArea(cnt)
-            epsilon = 0.1 * cv2.arcLength(cnt, True)
-            tmp = cv2.approxPolyDP(cnt, epsilon, True)
-            if 4 == len(tmp):
-                approxs.append(tmp)
-                if size * 0.005 <= area\
-                    and area <= size * 0.99\
-                    and max_area > area:
-                    best_approx = tmp
-                    max_area = area
+        HLS_img[HLS_img[:,:,0]<H_min] = [0,0,0]
+        HLS_img[H_max<HLS_img[:,:,0]] = [0,0,0]
+
+        HLS_img[HLS_img[:,:,1]<L_min] = [0,0,0]
+        HLS_img[L_max<HLS_img[:,:,1]] = [0,0,0]
+
+        HLS_img[HLS_img[:,:,2]<S_min] = [0,0,0]
+        HLS_img[S_max<HLS_img[:,:,2]] = [0,0,0]
+
+
+        BGR_img = cv2.cvtColor(HLS_img, cv2.COLOR_HLS2BGR)
+        gray = cv2.cvtColor(BGR_img, cv2.COLOR_BGR2GRAY)
+
+        # 二値化(閾値100を超えた画素を255にする。)
+        ret, img_thresh = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY)
+
+
+        dst = threshold(original_img, img_thresh, previous_path)
+        dst = dst.transpose(1,0,2)
+        dst = dst[:,::-1]
+        dst = cv2.rotate(dst, cv2.ROTATE_180)
+        width,height =2550,2100
+        dst = cv2.resize(dst,(width,height))
+        cv2.imwrite(previous_path+"/homography/"+image_name+"_corrected.jpg", dst)
+
+        i+=1
+        q.set(str(i)+"/"+str(len(original_paths)))
+        del original_img,HLS_img,gray,img_thresh,dst
+    finished()
+
+def callback():
+    button2.config(state="disable")
+    th = threading.Thread(target=analyze)
+    th.start()
+
+def sansyou1_clicked():
+    iDir = os.getenv("HOMEDRIVE") + os.getenv("HOMEPATH") + "\\Desktop"
+    global filepath1
+    global original_paths
+    original_paths=[]
+    filepath1 = filedialog.askdirectory(initialdir = iDir)
+    path = pathlib.Path(filepath1)
+    for file_or_dir in path.iterdir():
+        original_paths.append(str(file_or_dir))
+    file1.set(filepath1)
+
+def threshold(original_img, img_thresh, previous_path):
+    size = original_img.shape[0] * original_img.shape[1]
+    contours, hierarchy = cv2.findContours(img_thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    max_area = 10000000
+    approx = []
+    approx_area = []
+    best_approx = []
+    for i in range(len(contours)):
+        area = cv2.contourArea(contours[i])
+        epsilon = 0.01 * cv2.arcLength(contours[i], True)
+        tmp = cv2.approxPolyDP(contours[i], epsilon, True)
+        if  len(tmp) == 4 and size * 0.1 < area:
+            approx.append(tmp)
+            approx_area.append(area)
+    if len(approx) >= 2:
+        best_approx = approx[approx_area.index(sorted(approx_area)[-2])]
+    elif len(approx) == 1:
+        best_approx = approx[0]
+
+    '''for i in range(len(contours)):
+        if cv2.contourArea(contours[i]) > size * 0.1:
+            im_con = original_img.copy()
+            print('ID', i, 'Area', cv2.contourArea(contours[i]))
+            im_con = cv2.drawContours(im_con, contours, i, (0,255,0), 2)
+            cv2.imwrite(previous_path+"/homography/"+'result' + str(i) + '.jpg', im_con)'''
+    if len(best_approx) > 0:
         l_top = best_approx[0][0] 
         l_btm = best_approx[1][0]
         r_btm = best_approx[2][0]
@@ -87,37 +142,16 @@ def analyze():
         max_x = btm_line  if btm_line  > top_line   else top_line
         max_y = right_line if right_line > left_line else left_line
 
-        pts1 = np.float32([[l_top[0]-200,l_top[1]-200],[l_btm[0]-200,l_btm[1]+200],[r_btm[0]+200,r_btm[1]+200],[r_top[0]+200,r_top[1]-200]])
+        ##pts1 = np.float32([[l_top[0]-200,l_top[1]-200],[l_btm[0]-200,l_btm[1]+200],[r_btm[0]+200,r_btm[1]+200],[r_top[0]+200,r_top[1]-200]])
+        pts1 = np.float32([[l_top[0],l_top[1]],[l_btm[0],l_btm[1]],[r_btm[0],r_btm[1]],[r_top[0],r_top[1]]])
         pts2 = np.float32([[0,0], [0, max_y], [max_x, max_y], [max_x,0]])
 
         M = cv2.getPerspectiveTransform(pts1, pts2)
         dst = cv2.warpPerspective(original_img, M, (max_x, max_y))
-        dst = dst.transpose(1,0,2)
-        dst = dst[:,::-1]
-        dst = cv2.rotate(dst, cv2.ROTATE_180)
-        width,height =2150,1720
-        dst = cv2.resize(dst,(width,height))
-        cv2.imwrite(previous_path+"/homography/"+image_name+"_corrected.jpg", dst)
-        i+=1
-        q.set(str(i)+"/"+str(len(original_paths)))
-        del original_img,dst,img,gray,M,area,aimg
-    finished()
+    else:
+        dst = original_img
 
-def callback():
-    button2.config(state="disable")
-    th = threading.Thread(target=analyze)
-    th.start()
-
-def sansyou1_clicked():
-    iDir = os.getenv("HOMEDRIVE") + os.getenv("HOMEPATH") + "\\Desktop"
-    global filepath1
-    global original_paths
-    original_paths=[]
-    filepath1 = filedialog.askdirectory(initialdir = iDir)
-    path = pathlib.Path(filepath1)
-    for file_or_dir in path.iterdir():
-        original_paths.append(str(file_or_dir))
-    file1.set(filepath1)
+    return dst
 
 
 if __name__ == '__main__':

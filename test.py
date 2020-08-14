@@ -45,3 +45,49 @@ pts2 = np.float32([[max_x, max_y], [max_x, 0], [0, 0], [0, max_y]])
 M = cv2.getPerspectiveTransform(pts1, pts2)
 dst = cv2.warpPerspective(original_img, M, (max_x, max_y))
 cv2.imwrite("unchi.jpg" , dst)
+
+
+
+        r_btm = best_approx[0][0]
+        r_top = best_approx[1][0]
+        l_top = best_approx[2][0]
+        l_btm = best_approx[3][0]
+        r_btm_total = r_btm[0] + r_btm[1]
+        r_top_total = r_top[0] + r_top[1]
+        l_top_total = l_top[0] + l_top[1]
+        l_btm_total = l_btm[0] + l_btm[1]
+        if min(r_btm_total,r_top_total,l_top_total,l_btm_total) == r_top_total:
+            r_btm = best_approx[1][0]
+            r_top = best_approx[0][0]
+        elif min(r_btm_total,r_top_total,l_top_total,l_btm_total) == l_top_total:
+            r_btm = best_approx[2][0]
+            l_top = best_approx[0][0]
+        elif min(r_btm_total,r_top_total,l_top_total,l_btm_total) == l_btm_total:
+            r_btm = best_approx[3][0]
+            l_btm = best_approx[0][0]
+            
+        if max(r_btm_total,r_top_total,l_top_total,l_btm_total) == r_btm_total:
+            l_top = best_approx[0][0]
+            r_btm = best_approx[2][0]
+        elif max(r_btm_total,r_top_total,l_top_total,l_btm_total) == r_top_total:
+            l_top = best_approx[1][0]
+            r_top = best_approx[2][0]
+        elif max(r_btm_total,r_top_total,l_top_total,l_btm_total) == l_btm_total:
+            l_top = best_approx[3][0]
+            l_btm = best_approx[2][0]
+        
+
+        if (r_btm[0] - r_top[0]) ^ 2 > (r_btm[1] - r_top[1]) ^ 2:
+            r_top = best_approx[2][0]
+            l_top = best_approx[1][0]
+
+        top_line   = (abs(r_top[0] - l_top[0]) ^ 2) + (abs(r_top[1] - l_top[1]) ^ 2)
+        btm_line   = (abs(r_btm[0] - l_btm[0]) ^ 2) + (abs(r_btm[1] - l_btm[1]) ^ 2)
+        left_line  = (abs(l_top[0] - l_btm[0]) ^ 2) + (abs(l_top[1] - l_btm[1]) ^ 2)
+        right_line = (abs(r_top[0] - r_btm[0]) ^ 2) + (abs(r_top[1] - r_btm[1]) ^ 2)
+        max_x = top_line  if top_line  > btm_line   else btm_line
+        max_y = left_line if left_line > right_line else right_line
+        print([[r_btm[0],r_btm[1]],[r_top[0],r_top[1]],[l_top[0],l_top[1]],[l_btm[0],l_btm[1]]])
+
+        pts1 = np.float32([[r_btm[0],r_btm[1]],[r_top[0],r_top[1]],[l_top[0],l_top[1]],[l_btm[0],l_btm[1]]])
+        pts2 = np.float32([[0,0], [0, max_y], [max_x, max_y], [max_x,0]])
