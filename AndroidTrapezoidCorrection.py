@@ -112,14 +112,15 @@ def analyze():
             return  int(start + point * (cri_end - cri_start) / IMAGE_HEIGHT)
 
     def brightnessLinearApprox(original_img):
+        unitSize = 10
         # img[height,width]
         width = IMAGE_WIDTH - 1
         height = IMAGE_HEIGHT - 1
 
         gray = cv2.cvtColor(original_img, cv2.COLOR_BGR2GRAY)
-        for i in range(IMAGE_HEIGHT):
+        for i in range(0,IMAGE_HEIGHT,unitSize):
             for j in range(IMAGE_WIDTH):
-                gray[i,j] = brightPredection(gray[i,100], j, gray[100,100], gray[100,width-100], 'width')
+                gray[i:i+unitSize , j] = brightPredection(gray[i,180], j, gray[180,180], gray[180,width-180], 'width')
 
         return gray
 
